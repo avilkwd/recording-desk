@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f8f7f4">
   <meta name="description" content="A simple checklist for tracking recording documents by file.">
   <title>Recording Desk — File & Document Tracker</title>
-  <link rel="stylesheet" href="styles.css?v=2">
-  <script defer src="app.js?v=2"></script>
+  <link rel="stylesheet" href="styles.css?v=3">
+  <script defer src="app.js?v=3"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -23,19 +23,23 @@
       </div>
 
       <section class="overview" aria-label="Workflow overview">
-        <div class="metric"><div class="metric-label">ACTIVE FILES</div><div class="metric-value" id="files-count">0</div></div>
+        <div class="metric"><div class="metric-label">INCOMPLETE FILES</div><div class="metric-value" id="files-count">0</div></div>
         <div class="metric"><div class="metric-label">DOCUMENTS</div><div class="metric-value" id="documents-count">0</div></div>
         <div class="metric"><div class="metric-label">DOCUMENTS COMPLETE</div><div class="metric-value" id="complete-count">0</div></div>
         <div class="metric"><div class="metric-label">READY TO SEND</div><div class="metric-value" id="ready-count">0</div></div>
       </section>
 
-      <section class="workspace" aria-label="Files">
-        <div class="section-top"><div><h2>Files <span id="visible-count" class="count-inline"></span></h2><p class="section-sub">Click once to check, twice for N/A, or a third time to clear. A dash means not required.</p></div></div>
+      <section class="workspace" id="incomplete-section" aria-label="Incomplete files">
+        <div class="section-top"><div><h2>Incomplete files <span id="visible-count" class="count-inline"></span></h2><p class="section-sub">Click once to check, twice for N/A, or a third time to clear. A dash means not required.</p></div></div>
         <div class="toolbar">
           <div class="search-wrap"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="file-search">Search file number or document</label><input type="search" id="file-search" placeholder="Search file number or document…" autocomplete="off"></div>
           <div class="filter-wrap"><label class="sr-only" for="file-filter">Filter files</label><select id="file-filter"><option value="all">All files</option><option value="purchase">Purchase</option><option value="refinance">Refinance</option><option value="needs-attention">Needs attention</option><option value="complete">Fully complete</option></select></div>
         </div>
         <div class="file-list" id="file-list" aria-live="polite"></div>
+      </section>
+      <section class="workspace completed-workspace" id="completed-section" aria-label="Completed files">
+        <div class="section-top"><div><h2>Completed files <span id="completed-count" class="count-inline"></span></h2><p class="section-sub">Finished files move here automatically. You can reopen them by changing a checklist item or adding a document.</p></div></div>
+        <div class="file-list" id="completed-file-list"></div>
       </section>
     </main>
     <footer class="footer"><span>Recording Desk · Simple document tracking</span><span>Changes stay in this browser. Export a backup regularly.</span></footer>
@@ -62,6 +66,15 @@
     </form>
   </dialog>
 
+  <dialog id="notes-dialog" class="modal">
+    <form id="notes-form" class="modal-form">
+      <div class="modal-top"><p class="eyebrow">DOCUMENT NOTES</p><button type="button" class="close-button" data-close-dialog aria-label="Close">×</button></div>
+      <h2>Document notes</h2><p class="modal-help" id="notes-context"></p>
+      <label class="field-label" for="document-notes">Notes</label>
+      <textarea class="form-input notes-textarea" id="document-notes" maxlength="5000" rows="7" placeholder="Add instructions, outstanding items, or follow-up details…"></textarea>
+      <div class="modal-actions"><button type="button" class="button button-outline" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Save notes</button></div>
+    </form>
+  </dialog>
   <dialog id="data-dialog" class="modal">
     <div class="modal-form">
       <div class="modal-top"><p class="eyebrow">YOUR DATA</p><button type="button" class="close-button" data-close-dialog aria-label="Close">×</button></div>
