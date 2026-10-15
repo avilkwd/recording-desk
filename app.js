@@ -23,7 +23,7 @@ const escapeHtml = text => String(text).replace(/[&<>"']/g, character => ({
 }[character]));
 const blankChecks = () => Object.fromEntries(CHECKLIST.map(check => [check.key, false]));
 const makeDocument = (name, checks = {}) => ({
-  id: uid(), name, checks: { ...blankChecks(), ...checks }
+  id: uid(), name, notes: '', checks: { ...blankChecks(), ...checks }
 });
 const makeFile = (number, type) => ({
   id: uid(), number, type, createdAt: new Date().toISOString(),
@@ -84,9 +84,9 @@ function validateBackup(value) {
       documents: file.documents.map(doc => {
         if (!doc || typeof doc.name !== 'string' || !doc.name.trim() || doc.name.length > 100
           || !doc.checks || typeof doc.checks !== 'object') throw new Error('Invalid document in backup.');
-        return makeDocument(doc.name.trim(), Object.fromEntries(CHECKLIST.map(check => [
+        return { ...makeDocument(doc.name.trim(), Object.fromEntries(CHECKLIST.map(check => [
           check.key, doc.checks[check.key] === true ? true : doc.checks[check.key] === 'na' ? 'na' : false
-        ])));
+        ]))), notes: typeof doc.notes === 'string' ? doc.notes.slice(0, 5000) : '' };
       })
     };
   });
@@ -97,6 +97,7 @@ let state = loadData();
 let activeFileId = null;
 let searchTerm = '';
 let selectedFilter = 'all';
+let notesTarget = null;
 let toastTimer;
 
 function persist() {
@@ -126,7 +127,7 @@ function toast(message) {
 
 function renderMetrics() {
   const documents = state.files.flatMap(file => file.documents);
-  qs('#files-count').textContent = String(state.files.length);
+  qs('#files-count').textContent = String(state.files.filter(file => !fileComplete(file)).length);
   qs('#documents-count').textContent = String(documents.length);
   qs('#complete-count').textContent = String(documents.filter(docComplete).length);
   qs('#ready-count').textContent = String(documents.filter(docReady).length);
@@ -160,9 +161,9 @@ function fileMarkup(file) {
           aria-label="File ${escapeHtml(file.number)} — ${escapeHtml(doc.name)} — ${escapeHtml(check.label)}: ${statusName(status)}"
           title="Click to cycle: checked → N/A → clear">${status === true ? '✓' : status === 'na' ? 'N/A' : ''}</button></td>`;
       }).join('')}
-      <td><button type="button" class="text-action remove-document" data-action="remove-document"
+      <td><div class="doc-actions"><button type="button" class="text-action notes-action" data-action="edit-notes" data-file-id="${escapeHtml(file.id)}" data-doc-id="${escapeHtml(doc.id)}">${doc.notes ? "Notes ●" : "+ Notes"}</button><button type="button" class="text-action remove-document" data-action="remove-document"
         data-file-id="${escapeHtml(file.id)}" data-doc-id="${escapeHtml(doc.id)}"
-        aria-label="Remove ${escapeHtml(doc.name)} from file ${escapeHtml(file.number)}">Remove</button></td>
+        aria-label="Remove ${escapeHtml(doc.name)} from file ${escapeHtml(file.number)}">Remove</button></div></td>
     </tr>`).join('');
   return `<article class="file-card" data-file-card="${escapeHtml(file.id)}">
     <div class="file-heading"><div class="file-main">
@@ -184,22 +185,20 @@ function fileMarkup(file) {
 }
 function render() {
   renderMetrics();
-  const visible = state.files.filter(matchesFilter);
-  qs('#visible-count').textContent = `(${visible.length})`;
-  const list = qs('#file-list');
-  if (visible.length) {
-    list.innerHTML = visible.map(fileMarkup).join('');
-    return;
-  }
-  if (state.files.length) {
-    list.innerHTML = `<div class="empty-state"><h3>No matching files</h3><p>Try a different file number, document name, or filter.</p><button class="button button-outline" type="button" data-action="clear-filters">Clear filters</button></div>`;
-    return;
-  }
-  list.innerHTML = `<div class="empty-state"><h3>Start with your first file</h3>
-    <p>Add a file number and transaction type. We'll automatically create the standard documents and their checklists.</p>
-    <div class="empty-actions"><button type="button" class="button button-primary" data-action="new-file">＋ New file</button>
-    <button type="button" class="button button-outline" data-action="load-examples">View spreadsheet examples</button></div></div>`;
+  const matching = state.files.filter(matchesFilter);
+  const incomplete = matching.filter(file => !fileComplete(file));
+  const complete = matching.filter(fileComplete);
+  qs('#visible-count').textContent = '(' + incomplete.length + ')';
+  qs('#completed-count').textContent = '(' + complete.length + ')';
+  qs('#incomplete-section').hidden = selectedFilter === 'complete';
+  qs('#completed-section').hidden = selectedFilter === 'needs-attention';
+  qs('#file-list').innerHTML = incomplete.length ? incomplete.map(fileMarkup).join('') :
+    state.files.length ? '<div class="empty-state"><h3>No incomplete files</h3><p>Completed files appear in the section below.</p></div>' :
+    '<div class="empty-state"><h3>Start with your first file</h3><p>Add a file number and transaction type.</p><button type="button" class="button button-primary" data-action="new-file">＋ New file</button><button type="button" class="button button-outline" data-action="load-examples">View spreadsheet examples</button></div>';
+  qs('#completed-file-list').innerHTML = complete.length ? complete.map(fileMarkup).join('') :
+    '<div class="completed-empty">Completed files will appear here automatically.</div>';
 }
+
 function updateFileProgress(file) {
   const card = [...document.querySelectorAll('[data-file-card]')].find(el => el.dataset.fileCard === file.id);
   if (!card) return;
@@ -226,6 +225,26 @@ function updateTemplatePreview() {
   qs('#template-documents').innerHTML = TEMPLATES[selected]
     .map(name => `<span class="document-tag">${escapeHtml(name)}</span>`).join('');
 }
+function showDocumentNotes(fileId, docId) {
+  const file = state.files.find(item => item.id === fileId);
+  const doc = file?.documents.find(item => item.id === docId);
+  if (!doc) return;
+  notesTarget = { fileId, docId };
+  qs('#notes-context').textContent = 'File #' + file.number + ' · ' + doc.name;
+  qs('#document-notes').value = doc.notes || '';
+  openDialog(qs('#notes-dialog'));
+  qs('#document-notes').focus();
+}
+qs('#notes-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const doc = state.files.find(file => file.id === notesTarget?.fileId)?.documents.find(item => item.id === notesTarget.docId);
+  if (!doc) return;
+  doc.notes = qs('#document-notes').value.slice(0, 5000);
+  persist();
+  qs('#notes-dialog').close();
+  render();
+  toast('Notes saved.');
+});
 function showAddDocument(fileId) {
   const file = state.files.find(item => item.id === fileId);
   if (!file) return;
@@ -281,7 +300,7 @@ qs('#add-document-form').addEventListener('submit', event => {
 qs('#file-search').addEventListener('input', event => { searchTerm = event.target.value.trim(); render(); });
 qs('#file-filter').addEventListener('change', event => { selectedFilter = event.target.value; render(); });
 let filterRenderTimer;
-qs('#file-list').addEventListener('click', event => {
+document.querySelectorAll('#file-list, #completed-file-list').forEach(container => container.addEventListener('click', event => {
   const button = event.target.closest('button[data-checkbox]');
   if (!button) return;
   const file = state.files.find(item => item.id === button.dataset.fileId);
@@ -298,19 +317,18 @@ qs('#file-list').addEventListener('click', event => {
   button.closest('tr').classList.toggle('document-complete', docComplete(doc));
   updateFileProgress(file);
   renderMetrics();
-  // Defer filter updates briefly to let a second click select N/A without moving the button.
+  // Defer rerender to allow cycling through N/A before a completed file moves.
   clearTimeout(filterRenderTimer);
-  if (selectedFilter === 'needs-attention' || selectedFilter === 'complete') {
-    filterRenderTimer = setTimeout(render, 550);
-  }
-});
-qs('#file-list').addEventListener('click', event => {
+  filterRenderTimer = setTimeout(render, 800);
+}));
+document.querySelectorAll('#file-list, #completed-file-list').forEach(container => container.addEventListener('click', event => {
   const button = event.target.closest('button[data-action]');
   if (!button) return;
   const action = button.dataset.action;
   if (action === 'new-file') return showNewFile();
   if (action === 'load-examples') return loadExamples();
   if (action === 'add-document') return showAddDocument(button.dataset.fileId);
+  if (action === 'edit-notes') return showDocumentNotes(button.dataset.fileId, button.dataset.docId);
   if (action === 'clear-filters') {
     searchTerm = '';
     selectedFilter = 'all';
@@ -331,7 +349,7 @@ qs('#file-list').addEventListener('click', event => {
     file.documents = file.documents.filter(item => item.id !== doc.id);
     persist(); render(); toast(`${doc.name} removed.`);
   }
-});
+}));
 
 function loadExamples() {
   if (state.files.length) return;
@@ -363,12 +381,12 @@ function csvCell(value) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 qs('#download-csv').addEventListener('click', () => {
-  const columns = ['File number', 'Transaction type', 'Document type', ...CHECKLIST.map(check => check.label)];
+  const columns = ['File number', 'Transaction type', 'Document type', ...CHECKLIST.map(check => check.label), 'Notes'];
   const rows = [columns];
   state.files.forEach(file => file.documents.forEach(doc => {
     rows.push([file.number, file.type.toUpperCase(), doc.name,
       ...CHECKLIST.map(check => !isApplicable(doc, check.key) ? ''
-        : doc.checks[check.key] === true ? 'Yes' : doc.checks[check.key] === 'na' ? 'N/A' : 'No')]);
+        : doc.checks[check.key] === true ? 'Yes' : doc.checks[check.key] === 'na' ? 'N/A' : 'No'), doc.notes || '']);
   }));
   download(`recording-desk-${dayStamp()}.csv`, 'text/csv;charset=utf-8',
     '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));
