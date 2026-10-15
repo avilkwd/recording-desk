@@ -5,13 +5,13 @@ A small, responsive browser application for tracking mortgage recording document
 ## What it does
 
 - **New file:** Enter a file number and select **Purchase** or **Refinance**.
-  - Purchase automatically gets **DEED, MORTGAGE, UCC, ALR**.
-  - Refinance automatically gets **MORTGAGE, UCC, ALR**.
-- **Add document:** Add any extra document to a specific file, with a fresh set of checkboxes.
-- **Track each document:** Document date, Review recordable docs, Address cert, Exhibit A, and Sent for recording.
-- **Edit:** Check or uncheck any item. Delete individual documents or whole files (after confirmation).
+  - Purchase automatically gets **DEED, MORTGAGE**.
+  - Refinance automatically gets **MORTGAGE**.
+- **Add document:** Add any extra document to a specific file, with the applicable checklist items.
+- **Track each document:** Document date (**Deed only**); Review recordable docs; Address cert (**Deed and Mortgage only**); Exhibit A; and Sent for recording. Non-applicable cells show a dash and do not count against progress.
+- **Edit:** Each checklist button cycles **blank → ✓ checked → N/A → blank** with successive clicks. A checked or N/A requirement counts as resolved. Delete individual documents or whole files (after confirmation).
 - **Find files:** Search by file number or document name; filter by transaction type or completion.
-- **Review progress:** See per-file progress and summary metrics, including documents ready to send (first four checks marked, not yet sent).
+- **Review progress:** See per-file progress and summary metrics, including documents ready to send (all applicable pre-sending requirements resolved, and the sent status still blank).
 - **Backup:** Export everything to `.json`, re-import from `.json`, or export a spreadsheet-friendly `.csv` file.
 - **Demo:** Optionally load the three example files shown in the screenshot.
 
@@ -28,6 +28,12 @@ Download all three application files into one folder and open `index.html` in a 
 5. GitHub should display your website's URL when deployment completes, typically `https://YOUR-USERNAME.github.io/recording-desk/`.
 
 > **Important:** GitHub Pages serves a website, not a database. The checklist data in this version is saved in the local browser using `localStorage`. Two different browsers or devices will **not share the same files or changes**. Clearing browser site data can permanently erase local files. Export JSON backups regularly. If this is used for real business records, add authenticated cloud storage, shared synchronization, backups, and access controls before making it a multi-user production tool. A public Pages site is publicly reachable; do not use it for confidential borrower records as-is.
+
+## Updating from the previous version
+
+- The local browser storage key and JSON backup format remain compatible with v1; existing checked/unchecked statuses continue working. N/A is saved in backups and exported as `N/A` in CSV.
+- **New** purchase/refinance files use the new default document lists. Existing files are not automatically pruned, so manually added documents and previous recording history are not silently deleted.
+- Existing non-applicable checklist values are preserved in backups but hidden and excluded from progress and CSV output.
 
 ## Template and checklist configuration
 
