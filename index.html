@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f8f7f4">
   <meta name="description" content="A simple checklist for tracking recording documents by file.">
   <title>Recording Desk — File & Document Tracker</title>
-  <link rel="stylesheet" href="styles.css">
-  <script defer src="app.js"></script>
+  <link rel="stylesheet" href="styles.css?v=2">
+  <script defer src="app.js?v=2"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -30,7 +30,7 @@
       </section>
 
       <section class="workspace" aria-label="Files">
-        <div class="section-top"><div><h2>Files <span id="visible-count" class="count-inline"></span></h2><p class="section-sub">Review and update the checklist for each document.</p></div></div>
+        <div class="section-top"><div><h2>Files <span id="visible-count" class="count-inline"></span></h2><p class="section-sub">Click once to check, twice for N/A, or a third time to clear. A dash means not required.</p></div></div>
         <div class="toolbar">
           <div class="search-wrap"><span class="search-symbol" aria-hidden="true">⌕</span><label class="sr-only" for="file-search">Search file number or document</label><input type="search" id="file-search" placeholder="Search file number or document…" autocomplete="off"></div>
           <div class="filter-wrap"><label class="sr-only" for="file-filter">Filter files</label><select id="file-filter"><option value="all">All files</option><option value="purchase">Purchase</option><option value="refinance">Refinance</option><option value="needs-attention">Needs attention</option><option value="complete">Fully complete</option></select></div>
