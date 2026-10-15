@@ -1,11 +1,11 @@
 'use strict';
 
-// Recording Desk v1: entirely client-side; browser localStorage is the data store.
+// Recording Desk: entirely client-side; browser localStorage is the data store.
 const STORAGE_KEY = 'recording-desk-v1';
 const VERSION = 1;
 const TEMPLATES = Object.freeze({
-  purchase: ['DEED', 'MORTGAGE', 'UCC', 'ALR'],
-  refinance: ['MORTGAGE', 'UCC', 'ALR']
+  purchase: ['DEED', 'MORTGAGE'],
+  refinance: ['MORTGAGE']
 });
 const CHECKLIST = Object.freeze([
   { key: 'documentDate', label: 'Document date' },
@@ -29,13 +29,28 @@ const makeFile = (number, type) => ({
   id: uid(), number, type, createdAt: new Date().toISOString(),
   documents: TEMPLATES[type].map(name => makeDocument(name))
 });
-const docComplete = doc => CHECKLIST.every(check => doc.checks[check.key] === true);
-const docReady = doc => CHECKLIST.slice(0, 4).every(check => doc.checks[check.key] === true)
-  && !doc.checks.sentForRecording;
+// Some checklist columns do not apply to every document type.
+// Whole-word matching also recognizes names such as 'Warranty Deed' or 'Mortgage Rider'.
+const isApplicable = (doc, key) => {
+  const name = doc.name.trim().toUpperCase();
+  if (key === 'documentDate') return /\bDEED\b/.test(name);
+  if (key === 'addressCert') return /\b(DEED|MORTGAGE)\b/.test(name);
+  return true;
+};
+const applicableChecks = doc => CHECKLIST.filter(check => isApplicable(doc, check.key));
+const resolved = status => status === true || status === 'na';
+// One click completes, two clicks selects N/A, three clicks clears.
+const nextStatus = status => status === true ? 'na' : status === 'na' ? false : true;
+const statusName = status => status === true ? 'Checked' : status === 'na' ? 'N/A' : 'Not checked';
+const statusClass = status => status === true ? 'checked' : status === 'na' ? 'na' : 'empty';
+const docComplete = doc => applicableChecks(doc).every(check => resolved(doc.checks[check.key]));
+const docReady = doc => applicableChecks(doc).filter(check => check.key !== 'sentForRecording')
+  .every(check => resolved(doc.checks[check.key])) && doc.checks.sentForRecording === false;
 const fileComplete = file => file.documents.length > 0 && file.documents.every(docComplete);
 const fileCheckCounts = file => ({
-  checked: file.documents.reduce((total, doc) => total + CHECKLIST.filter(c => doc.checks[c.key]).length, 0),
-  available: file.documents.length * CHECKLIST.length
+  checked: file.documents.reduce((total, doc) => total + applicableChecks(doc)
+    .filter(check => resolved(doc.checks[check.key])).length, 0),
+  available: file.documents.reduce((total, doc) => total + applicableChecks(doc).length, 0)
 });
 
 function loadData() {
@@ -70,7 +85,7 @@ function validateBackup(value) {
         if (!doc || typeof doc.name !== 'string' || !doc.name.trim() || doc.name.length > 100
           || !doc.checks || typeof doc.checks !== 'object') throw new Error('Invalid document in backup.');
         return makeDocument(doc.name.trim(), Object.fromEntries(CHECKLIST.map(check => [
-          check.key, doc.checks[check.key] === true
+          check.key, doc.checks[check.key] === true ? true : doc.checks[check.key] === 'na' ? 'na' : false
         ])));
       })
     };
@@ -135,10 +150,16 @@ function fileMarkup(file) {
   const rows = file.documents.map(doc => `
     <tr data-doc-id="${escapeHtml(doc.id)}" class="${docComplete(doc) ? 'document-complete' : ''}">
       <td><span class="document-label">${escapeHtml(doc.name)}</span></td>
-      ${CHECKLIST.map(check => `<td class="check-cell"><input class="document-check" type="checkbox"
-         data-checkbox="${check.key}" data-file-id="${escapeHtml(file.id)}" data-doc-id="${escapeHtml(doc.id)}"
-         aria-label="File ${escapeHtml(file.number)} — ${escapeHtml(doc.name)} — ${escapeHtml(check.label)}"
-         ${doc.checks[check.key] ? 'checked' : ''}></td>`).join('')}
+      ${CHECKLIST.map(check => {
+        if (!isApplicable(doc, check.key)) return `<td class="check-cell not-required"><span aria-label="Not required" title="Not required for this document">—</span></td>`;
+        const status = doc.checks[check.key];
+        return `<td class="check-cell"><button class="document-check status-${statusClass(status)}" type="button"
+          data-checkbox="${check.key}" data-file-id="${escapeHtml(file.id)}" data-doc-id="${escapeHtml(doc.id)}"
+          data-check-label="${escapeHtml(check.label)}" data-document-name="${escapeHtml(doc.name)}"
+          aria-pressed="${status === true ? 'true' : status === 'na' ? 'mixed' : 'false'}"
+          aria-label="File ${escapeHtml(file.number)} — ${escapeHtml(doc.name)} — ${escapeHtml(check.label)}: ${statusName(status)}"
+          title="Click to cycle: checked → N/A → clear">${status === true ? '✓' : status === 'na' ? 'N/A' : ''}</button></td>`;
+      }).join('')}
       <td><button type="button" class="text-action remove-document" data-action="remove-document"
         data-file-id="${escapeHtml(file.id)}" data-doc-id="${escapeHtml(doc.id)}"
         aria-label="Remove ${escapeHtml(doc.name)} from file ${escapeHtml(file.number)}">Remove</button></td>
@@ -147,7 +168,7 @@ function fileMarkup(file) {
     <div class="file-heading"><div class="file-main">
       <div class="file-title-line"><span class="file-number">#${escapeHtml(file.number)}</span>
         <span class="type-tag">${file.type === 'purchase' ? 'PURCHASE' : 'REFINANCE'}</span></div>
-      <div class="progress-summary" data-file-summary="${escapeHtml(file.id)}">${completeDocs} of ${file.documents.length} documents complete · ${checked}/${available} checks</div>
+      <div class="progress-summary" data-file-summary="${escapeHtml(file.id)}">${completeDocs} of ${file.documents.length} documents complete · ${checked}/${available} resolved</div>
     </div><div class="file-actions">
       <button type="button" class="button button-outline add-doc-button" data-action="add-document" data-file-id="${escapeHtml(file.id)}">＋ Add document</button>
       <button type="button" class="text-action" data-action="remove-file" data-file-id="${escapeHtml(file.id)}">Delete file</button>
@@ -185,7 +206,7 @@ function updateFileProgress(file) {
   const { checked, available } = fileCheckCounts(file);
   const completeDocs = file.documents.filter(docComplete).length;
   const summary = card.querySelector('[data-file-summary]');
-  summary.textContent = `${completeDocs} of ${file.documents.length} documents complete · ${checked}/${available} checks`;
+  summary.textContent = `${completeDocs} of ${file.documents.length} documents complete · ${checked}/${available} resolved`;
   const percent = available ? Math.round(checked / available * 100) : 0;
   card.querySelector('.file-progress-fill').style.width = `${percent}%`;
   card.querySelector('[role="progressbar"]').setAttribute('aria-valuenow', String(percent));
@@ -210,7 +231,7 @@ function showAddDocument(fileId) {
   if (!file) return;
   activeFileId = file.id;
   qs('#add-document-form').reset();
-  qs('#add-document-context').textContent = `Adding a custom document to file #${file.number}. It will have all five checklist items.`;
+  qs('#add-document-context').textContent = `Adding a custom document to file #${file.number}. Checklist items will appear where they apply.`;
   openDialog(qs('#add-document-dialog'));
   qs('#new-document-name').focus();
 }
@@ -259,19 +280,28 @@ qs('#add-document-form').addEventListener('submit', event => {
 });
 qs('#file-search').addEventListener('input', event => { searchTerm = event.target.value.trim(); render(); });
 qs('#file-filter').addEventListener('change', event => { selectedFilter = event.target.value; render(); });
-qs('#file-list').addEventListener('change', event => {
-  const input = event.target;
-  if (!input.matches('[data-checkbox]')) return;
-  const file = state.files.find(item => item.id === input.dataset.fileId);
-  const doc = file?.documents.find(item => item.id === input.dataset.docId);
-  if (!file || !doc || !CHECKLIST.some(check => check.key === input.dataset.checkbox)) return;
-  doc.checks[input.dataset.checkbox] = input.checked;
+let filterRenderTimer;
+qs('#file-list').addEventListener('click', event => {
+  const button = event.target.closest('button[data-checkbox]');
+  if (!button) return;
+  const file = state.files.find(item => item.id === button.dataset.fileId);
+  const doc = file?.documents.find(item => item.id === button.dataset.docId);
+  const key = button.dataset.checkbox;
+  if (!file || !doc || !CHECKLIST.some(check => check.key === key) || !isApplicable(doc, key)) return;
+  const status = nextStatus(doc.checks[key]);
+  doc.checks[key] = status;
+  button.className = `document-check status-${statusClass(status)}`;
+  button.textContent = status === true ? '✓' : status === 'na' ? 'N/A' : '';
+  button.setAttribute('aria-pressed', status === true ? 'true' : status === 'na' ? 'mixed' : 'false');
+  button.setAttribute('aria-label', `File ${file.number} — ${doc.name} — ${button.dataset.checkLabel}: ${statusName(status)}`);
   persist();
-  if (selectedFilter === 'needs-attention' || selectedFilter === 'complete') render();
-  else {
-    input.closest('tr').classList.toggle('document-complete', docComplete(doc));
-    updateFileProgress(file);
-    renderMetrics();
+  button.closest('tr').classList.toggle('document-complete', docComplete(doc));
+  updateFileProgress(file);
+  renderMetrics();
+  // Defer filter updates briefly to let a second click select N/A without moving the button.
+  clearTimeout(filterRenderTimer);
+  if (selectedFilter === 'needs-attention' || selectedFilter === 'complete') {
+    filterRenderTimer = setTimeout(render, 550);
   }
 });
 qs('#file-list').addEventListener('click', event => {
@@ -309,8 +339,6 @@ function loadExamples() {
   const completedReview = { reviewRecordableDocs: true, addressCert: true, exhibitA: true };
   purchase1139.documents[0].checks = { ...blankChecks(), ...completedReview, documentDate: true };
   purchase1139.documents[1].checks = { ...blankChecks(), reviewRecordableDocs: true, exhibitA: true };
-  purchase1139.documents[2].checks = { ...blankChecks(), ...completedReview };
-  purchase1139.documents[3].checks = { ...blankChecks(), ...completedReview };
   state.files = [purchase1139, makeFile('1146', 'refinance'), makeFile('1140', 'purchase')];
   persist(); render(); toast('Loaded three sample files from the spreadsheet.');
 }
@@ -339,7 +367,8 @@ qs('#download-csv').addEventListener('click', () => {
   const rows = [columns];
   state.files.forEach(file => file.documents.forEach(doc => {
     rows.push([file.number, file.type.toUpperCase(), doc.name,
-      ...CHECKLIST.map(check => doc.checks[check.key] ? 'Yes' : 'No')]);
+      ...CHECKLIST.map(check => !isApplicable(doc, check.key) ? ''
+        : doc.checks[check.key] === true ? 'Yes' : doc.checks[check.key] === 'na' ? 'N/A' : 'No')]);
   }));
   download(`recording-desk-${dayStamp()}.csv`, 'text/csv;charset=utf-8',
     '\uFEFF' + rows.map(row => row.map(csvCell).join(',')).join('\r\n'));
